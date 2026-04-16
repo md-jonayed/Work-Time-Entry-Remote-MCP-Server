@@ -14,7 +14,6 @@ from excel_export import export_excel
 import json
 from pathlib import Path
 import os
-import asyncio
 
 mcp = FastMCP(name="IKIM Work Time Server")
 
@@ -57,8 +56,7 @@ async def has_schedule():
     return len(schedule) > 0
 
 
-# Initialize database when the module is imported
-asyncio.run(init_db())
+# Database initialization is now handled lazily in get_connection
 
 
 @mcp.tool
