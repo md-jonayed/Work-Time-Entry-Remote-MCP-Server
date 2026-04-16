@@ -5,7 +5,7 @@ from db import get_connection
 from utils import get_weekday
 
 
-def export_excel(month, year, filename="timesheet.xlsx"):
+def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
     conn, cursor = get_connection()
 
     wb = Workbook()

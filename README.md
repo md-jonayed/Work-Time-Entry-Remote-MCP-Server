@@ -107,6 +107,12 @@ pip install -e .
 ```bash
 # Set default weekly hours (optional)
 export DEFAULT_WEEKLY_HOURS=9.0
+
+# Set database path for persistent storage (optional, defaults to /tmp/work_time.db)
+export DB_PATH=/path/to/your/database.db
+
+# Set config file path for user preferences (optional, defaults to project directory)
+export CONFIG_PATH=/path/to/config_user.json
 ```
 
 ### User Preferences
@@ -155,6 +161,28 @@ Configure your MCP client (e.g., Claude Desktop) to connect to this server:
   }
 }
 ```
+
+## ☁️ Cloud Deployment
+
+### FastMCP Cloud
+
+This server is designed to work with FastMCP cloud deployments. For persistent data storage in cloud environments:
+
+1. **Set Database Path**: Configure the `DB_PATH` environment variable to a writable location:
+
+   ```bash
+   export DB_PATH=/persistent/storage/work_time.db
+   ```
+
+2. **Volume Mounting**: If deploying in containers, mount a persistent volume to the database path.
+
+3. **Default Behavior**: If `DB_PATH` is not set, the server uses `/tmp/work_time.db` which provides temporary storage that may be lost on container restarts.
+
+### Data Persistence
+
+- **Local Development**: Database is stored in the project directory
+- **Cloud Deployment**: Use environment variables to configure persistent storage paths
+- **Backup**: Regularly backup your database file for data safety
 
 ## 📚 API Reference
 

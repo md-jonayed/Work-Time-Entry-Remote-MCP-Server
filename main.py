@@ -19,7 +19,7 @@ mcp = FastMCP(name="IKIM Work Time Server")
 
 # Config file for storing user preferences
 PROJECT_DIR = Path(__file__).parent.absolute()
-CONFIG_FILE = PROJECT_DIR / "config_user.json"
+CONFIG_FILE = os.getenv('CONFIG_PATH', str(PROJECT_DIR / "config_user.json"))
 
 # Ensure we're in the correct working directory
 os.chdir(PROJECT_DIR)

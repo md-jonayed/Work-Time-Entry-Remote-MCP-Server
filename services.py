@@ -26,7 +26,13 @@ def add_entry(date, start, end, remark="", break_start=None, break_end=None):
     """, (date, weekday, start, end, break_start, break_end, hours, remark))
 
     entry_id = cursor.lastrowid
-    conn.commit()
+    try:
+        conn.commit()
+    except Exception as e:
+        if "readonly" in str(e).lower():
+            raise ValueError(
+                "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
+        raise
 
     return {"id": entry_id, "date": date, "weekday": weekday, "hours": hours}
 
@@ -113,7 +119,13 @@ def update_time_entry(entry_id, date=None, start=None, end=None, remark=None, br
         "UPDATE time_entries SET date=?, weekday=?, start_time=?, end_time=?, break_start_time=?, break_end_time=?, total_hours=?, remark=? WHERE id = ?",
         (date, weekday, start, end, break_start, break_end, hours, remark, entry_id)
     )
-    conn.commit()
+    try:
+        conn.commit()
+    except Exception as e:
+        if "readonly" in str(e).lower():
+            raise ValueError(
+                "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
+        raise
     return get_time_entry(entry_id)
 
 
@@ -126,7 +138,13 @@ def delete_time_entry(entry_id):
     conn, cursor = get_connection()
     cursor.execute("DELETE FROM time_entries WHERE id = ?", (entry_id,))
     deleted = cursor.rowcount
-    conn.commit()
+    try:
+        conn.commit()
+    except Exception as e:
+        if "readonly" in str(e).lower():
+            raise ValueError(
+                "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
+        raise
     return {"deleted": deleted, "id": entry_id}
 
 
@@ -137,7 +155,13 @@ def set_schedule(day, hours):
         VALUES (?, ?)
     """, (day, hours))
 
-    conn.commit()
+    try:
+        conn.commit()
+    except Exception as e:
+        if "readonly" in str(e).lower():
+            raise ValueError(
+                "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
+        raise
 
 
 def get_schedule():

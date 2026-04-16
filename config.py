@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
 
-# Use absolute path for database to avoid working directory issues
-PROJECT_DIR = Path(__file__).parent.absolute()
-DB_NAME = str(PROJECT_DIR / "work_time.db")
+# Use configurable database path, default to /tmp for cloud deployments
+DB_NAME = os.getenv('DB_PATH', '/tmp/work_time.db')
 
 # Make DEFAULT_WEEKLY_HOURS configurable via environment variable
 DEFAULT_WEEKLY_HOURS = float(os.getenv("DEFAULT_WEEKLY_HOURS", "9"))
