@@ -1,29 +1,27 @@
-import sqlite3
+import aiosqlite
 import os
 from pathlib import Path
 from config import DB_NAME
 
 # Lazy initialization
 conn = None
-cursor = None
 
 
-def get_connection():
+async def get_connection():
     """Lazily initialize database connection"""
-    global conn, cursor
+    global conn
     if conn is None:
         # Ensure database directory exists
         db_path = Path(DB_NAME)
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-        cursor = conn.cursor()
-    return conn, cursor
+        conn = await aiosqlite.connect(DB_NAME)
+    return conn
 
 
-def init_db():
-    conn, cursor = get_connection()
-    cursor.execute("""
+async def init_db():
+    conn = await get_connection()
+    await conn.execute("""
     CREATE TABLE IF NOT EXISTS time_entries (
         id INTEGER PRIMARY KEY,
         date TEXT NOT NULL,
@@ -39,18 +37,18 @@ def init_db():
 
     # Add break columns if they don't exist (for existing databases)
     try:
-        cursor.execute(
+        await conn.execute(
             "ALTER TABLE time_entries ADD COLUMN break_start_time TEXT")
-    except sqlite3.OperationalError:
+    except aiosqlite.OperationalError:
         pass  # Column already exists
 
     try:
-        cursor.execute(
+        await conn.execute(
             "ALTER TABLE time_entries ADD COLUMN break_end_time TEXT")
-    except sqlite3.OperationalError:
+    except aiosqlite.OperationalError:
         pass  # Column already exists
 
-    cursor.execute("""
+    await conn.execute("""
     CREATE TABLE IF NOT EXISTS work_schedule (
         id INTEGER PRIMARY KEY,
         weekday TEXT UNIQUE,
@@ -58,4 +56,4 @@ def init_db():
     )
     """)
 
-    conn.commit()
+    await conn.commit()

@@ -1,12 +1,13 @@
 from openpyxl import Workbook
 from datetime import datetime
 import calendar
+import asyncio
 from db import get_connection
 from utils import get_weekday
 
 
-def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
-    conn, cursor = get_connection()
+async def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
+    conn = await get_connection()
 
     wb = Workbook()
     ws = wb.active
@@ -21,12 +22,12 @@ def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
         date = f"{year}-{month:02d}-{day:02d}"
         weekday = get_weekday(date)
 
-        cursor.execute(
+        cursor = await conn.execute(
             "SELECT start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE date=?",
             (date,)
         )
 
-        row = cursor.fetchone()
+        row = await cursor.fetchone()
 
         if row:
             # Replace None with empty string for Excel
@@ -36,13 +37,14 @@ def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
             ws.append([date, weekday, "", "", "", "", 0, "MISSED"])
 
     # totals
-    cursor.execute(
+    cursor = await conn.execute(
         "SELECT SUM(total_hours) FROM time_entries WHERE date LIKE ?", (f"{year}-{month:02d}%",))
-    total = cursor.fetchone()[0] or 0
+    total_row = await cursor.fetchone()
+    total = total_row[0] or 0
 
     ws.append([])
     ws.append(["TOTAL", "", "", "", total])
 
-    wb.save(filename)
+    await asyncio.to_thread(wb.save, filename)
 
     return {"file": filename}

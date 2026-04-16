@@ -14,6 +14,7 @@ from excel_export import export_excel
 import json
 from pathlib import Path
 import os
+import asyncio
 
 mcp = FastMCP(name="IKIM Work Time Server")
 
@@ -46,39 +47,40 @@ def save_default_hours(hours: float):
 
 def get_schedule_total_hours():
     """Return the total weekly hours defined in the current work schedule."""
-    schedule = get_schedule()
+    schedule = asyncio.run(get_schedule())
     return sum(item["hours"] for item in schedule)
 
 
-def has_schedule():
+async def has_schedule():
     """Return True if a work schedule blueprint exists."""
-    return len(get_schedule()) > 0
+    schedule = await get_schedule()
+    return len(schedule) > 0
 
 
 # Initialize database when the module is imported
-init_db()
+asyncio.run(init_db())
 
 
 @mcp.tool
-def add_time_entry(date: str, start: str, end: str, remark: str = "", break_start: str | None = None, break_end: str | None = None):
+async def add_time_entry(date: str, start: str, end: str, remark: str = "", break_start: str | None = None, break_end: str | None = None):
     """Add a work entry with optional break time"""
-    if not has_schedule() and load_default_hours() is None:
+    if not await has_schedule() and load_default_hours() is None:
         raise ValueError(
             "Please define a work schedule or default weekly hours before logging time entries.")
-    return add_entry(date, start, end, remark, break_start, break_end)
+    return await add_entry(date, start, end, remark, break_start, break_end)
 
 
 @mcp.tool
-def set_work_schedule(day: str, hours: float):
+async def set_work_schedule(day: str, hours: float):
     """Set weekly schedule"""
-    set_schedule(day, hours)
+    await set_schedule(day, hours)
     return {"day": day, "hours": hours}
 
 
 @mcp.tool
-def get_work_schedule():
+async def get_work_schedule():
     """View schedule"""
-    return get_schedule()
+    return await get_schedule()
 
 
 @mcp.tool
@@ -89,9 +91,9 @@ def set_default_weekly_hours(hours: float):
 
 
 @mcp.tool
-def get_default_weekly_hours():
+async def get_default_weekly_hours():
     """Get the current default weekly hours."""
-    if has_schedule():
+    if await has_schedule():
         hours = get_schedule_total_hours()
     else:
         hours = load_default_hours()
@@ -99,39 +101,39 @@ def get_default_weekly_hours():
 
 
 @mcp.tool
-def get_time_entries(month: int, year: int):
+async def get_time_entries(month: int, year: int):
     """Get time entries for a month"""
-    return _get_time_entries(month, year)
+    return await _get_time_entries(month, year)
 
 
 @mcp.tool
-def get_time_entry(entry_id: int):
+async def get_time_entry(entry_id: int):
     """Get a single time entry by ID"""
-    return _get_time_entry(entry_id)
+    return await _get_time_entry(entry_id)
 
 
 @mcp.tool
-def update_time_entry(entry_id: int, date: str | None = None, start: str | None = None, end: str | None = None, remark: str | None = None, break_start: str | None = None, break_end: str | None = None):
+async def update_time_entry(entry_id: int, date: str | None = None, start: str | None = None, end: str | None = None, remark: str | None = None, break_start: str | None = None, break_end: str | None = None):
     """Update a saved time entry with optional break time"""
-    return _update_time_entry(entry_id, date=date, start=start, end=end, remark=remark, break_start=break_start, break_end=break_end)
+    return await _update_time_entry(entry_id, date=date, start=start, end=end, remark=remark, break_start=break_start, break_end=break_end)
 
 
 @mcp.tool
-def delete_time_entry(entry_id: int):
+async def delete_time_entry(entry_id: int):
     """Delete a saved time entry"""
-    return _delete_time_entry(entry_id)
+    return await _delete_time_entry(entry_id)
 
 
 @mcp.tool
-def get_month_summary(month: int, year: int):
+async def get_month_summary(month: int, year: int):
     """Monthly summary"""
-    return month_summary(month, year)
+    return await month_summary(month, year)
 
 
 @mcp.tool
-def export_month_excel(month: int, year: int):
+async def export_month_excel(month: int, year: int):
     """Export IKIM-style Excel"""
-    return export_excel(month, year)
+    return await export_excel(month, year)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ A comprehensive **Model Context Protocol (MCP)** server for professional work ti
 - **Database Persistence**: SQLite-based storage with automatic schema management
 - **Configuration Management**: JSON-based user preferences and environment variable support
 - **Flexible Work Hours**: Configure weekly work hours and work days for accurate calculations
+- **Asynchronous Operations**: Built with async/await for high-performance concurrent database operations using aiosqlite
 - **Thread Safety**: Optimized for MCP's single-threaded execution model
 
 ### 🤖 **MCP Integration**
