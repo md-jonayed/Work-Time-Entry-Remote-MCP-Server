@@ -6,12 +6,22 @@ from db import get_connection
 from utils import get_weekday
 
 
-async def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
+async def export_excel(user_id: str, month: int, year: int, filename: str | None = None):
+    """Export user-specific timesheet to Excel - DATA IS ISOLATED BY USER"""
     conn = await get_connection()
+
+    # Generate filename if not provided
+    if filename is None:
+        filename = f"/tmp/timesheet_{user_id}_{year}-{month:02d}.xlsx"
 
     wb = Workbook()
     ws = wb.active
     ws.title = "IKIM Timesheet"
+
+    # Add header with user info
+    ws.append(["IKIM Timesheet", f"User: {user_id}", "", ""])
+    ws.append(["Month", f"{calendar.month_name[month]} {year}", "", ""])
+    ws.append([])  # Empty row for spacing
 
     ws.append(["Date", "Weekday", "Start", "End",
               "Break Start", "Break End", "Hours", "Remark"])
@@ -23,8 +33,8 @@ async def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
         weekday = get_weekday(date)
 
         cursor = await conn.execute(
-            "SELECT start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE date=?",
-            (date,)
+            "SELECT start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE user_id = ? AND date = ?",
+            (user_id, date)
         )
 
         row = await cursor.fetchone()
@@ -38,7 +48,9 @@ async def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
 
     # totals
     cursor = await conn.execute(
-        "SELECT SUM(total_hours) FROM time_entries WHERE date LIKE ?", (f"{year}-{month:02d}%",))
+        "SELECT SUM(total_hours) FROM time_entries WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{year}-{month:02d}%")
+    )
     total_row = await cursor.fetchone()
     total = total_row[0] or 0
 
@@ -47,4 +59,4 @@ async def export_excel(month, year, filename="/tmp/timesheet.xlsx"):
 
     await asyncio.to_thread(wb.save, filename)
 
-    return {"file": filename}
+    return {"file": filename, "user_id": user_id, "month": month, "year": year}

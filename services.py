@@ -1,12 +1,22 @@
-from db import get_connection
+from db import get_connection, register_user, user_exists
 from utils import calculate_hours_with_break, get_weekday, count_weekday_in_month, validate_time_order, validate_date
 from datetime import datetime
 
 
-async def add_entry(date, start, end, remark="", break_start=None, break_end=None):
+async def ensure_user(user_id: str):
+    """Ensure user exists in the database"""
+    if not await user_exists(user_id):
+        await register_user(user_id)
+
+
+async def add_entry(user_id: str, date: str, start: str, end: str, remark: str = "", break_start: str | None = None, break_end: str | None = None):
+    """Add a work entry with optional break time - now with user isolation"""
     # Validate inputs
     validate_date(date)
     validate_time_order(start, end, break_start, break_end)
+
+    # Ensure user exists
+    await ensure_user(user_id)
 
     conn = await get_connection()
     weekday = get_weekday(date)
@@ -14,18 +24,18 @@ async def add_entry(date, start, end, remark="", break_start=None, break_end=Non
     # Sick leave auto-handling
     if remark.lower() == "sick leave":
         cursor = await conn.execute(
-            "SELECT expected_hours FROM work_schedule WHERE weekday=?", (weekday,))
+            "SELECT expected_hours FROM work_schedule WHERE user_id = ? AND weekday = ?", (user_id, weekday))
         row = await cursor.fetchone()
         hours = row[0] if row else 0
     else:
         hours = calculate_hours_with_break(start, end, break_start, break_end)
 
-    await conn.execute("""
-        INSERT INTO time_entries (date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (date, weekday, start, end, break_start, break_end, hours, remark))
+    cursor = await conn.execute("""
+        INSERT INTO time_entries (user_id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, date, weekday, start, end, break_start, break_end, hours, remark))
 
-    entry_id = conn.last_insert_rowid()
+    entry_id = cursor.lastrowid
     try:
         await conn.commit()
     except Exception as e:
@@ -34,15 +44,16 @@ async def add_entry(date, start, end, remark="", break_start=None, break_end=Non
                 "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
         raise
 
-    return {"id": entry_id, "date": date, "weekday": weekday, "hours": hours}
+    return {"id": entry_id, "user_id": user_id, "date": date, "weekday": weekday, "hours": hours}
 
 
-async def get_time_entries(month, year):
+async def get_time_entries(user_id: str, month: int, year: int):
+    """Get time entries for a specific user and month - data-isolated"""
     conn = await get_connection()
     prefix = f"{year}-{month:02d}"
     cursor = await conn.execute(
-        "SELECT id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE date LIKE ? ORDER BY date",
-        (f"{prefix}%",)
+        "SELECT id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE user_id = ? AND date LIKE ? ORDER BY date",
+        (user_id, f"{prefix}%")
     )
     rows = await cursor.fetchall()
     return [
@@ -61,11 +72,12 @@ async def get_time_entries(month, year):
     ]
 
 
-async def get_time_entry(entry_id):
+async def get_time_entry(user_id: str, entry_id: int):
+    """Get a single time entry - data-isolated to user"""
     conn = await get_connection()
     cursor = await conn.execute(
-        "SELECT id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE id = ?",
-        (entry_id,)
+        "SELECT id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE id = ? AND user_id = ?",
+        (entry_id, user_id)
     )
     row = await cursor.fetchone()
     if not row:
@@ -83,10 +95,11 @@ async def get_time_entry(entry_id):
     }
 
 
-async def update_time_entry(entry_id, date=None, start=None, end=None, remark=None, break_start=None, break_end=None):
+async def update_time_entry(user_id: str, entry_id: int, date: str | None = None, start: str | None = None, end: str | None = None, remark: str | None = None, break_start: str | None = None, break_end: str | None = None):
+    """Update a saved time entry - data-isolated to user"""
     conn = await get_connection()
     cursor = await conn.execute(
-        "SELECT date, start_time, end_time, break_start_time, break_end_time, remark FROM time_entries WHERE id = ?", (entry_id,))
+        "SELECT date, start_time, end_time, break_start_time, break_end_time, remark FROM time_entries WHERE id = ? AND user_id = ?", (entry_id, user_id))
     row = await cursor.fetchone()
     if not row:
         return {"error": f"Time entry with id {entry_id} not found"}
@@ -108,8 +121,8 @@ async def update_time_entry(entry_id, date=None, start=None, end=None, remark=No
 
     if remark and remark.lower() == "sick leave":
         cursor = await conn.execute(
-            "SELECT expected_hours FROM work_schedule WHERE weekday=?", (
-                weekday,)
+            "SELECT expected_hours FROM work_schedule WHERE user_id = ? AND weekday = ?", (
+                user_id, weekday)
         )
         row = await cursor.fetchone()
         hours = row[0] if row else 0
@@ -117,8 +130,9 @@ async def update_time_entry(entry_id, date=None, start=None, end=None, remark=No
         hours = calculate_hours_with_break(start, end, break_start, break_end)
 
     await conn.execute(
-        "UPDATE time_entries SET date=?, weekday=?, start_time=?, end_time=?, break_start_time=?, break_end_time=?, total_hours=?, remark=? WHERE id = ?",
-        (date, weekday, start, end, break_start, break_end, hours, remark, entry_id)
+        "UPDATE time_entries SET date=?, weekday=?, start_time=?, end_time=?, break_start_time=?, break_end_time=?, total_hours=?, remark=?, updated_at=CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+        (date, weekday, start, end, break_start,
+         break_end, hours, remark, entry_id, user_id)
     )
     try:
         await conn.commit()
@@ -127,17 +141,17 @@ async def update_time_entry(entry_id, date=None, start=None, end=None, remark=No
             raise ValueError(
                 "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
         raise
-    return await get_time_entry(entry_id)
+    return await get_time_entry(user_id, entry_id)
 
 
-async def delete_time_entry(entry_id):
-    # get_time_entry will return error dict if entry doesn't exist
-    existing_entry = await get_time_entry(entry_id)
+async def delete_time_entry(user_id: str, entry_id: int):
+    """Delete a saved time entry - data-isolated to user"""
+    existing_entry = await get_time_entry(user_id, entry_id)
     if "error" in existing_entry:
         return existing_entry
 
     conn = await get_connection()
-    cursor = await conn.execute("DELETE FROM time_entries WHERE id = ?", (entry_id,))
+    cursor = await conn.execute("DELETE FROM time_entries WHERE id = ? AND user_id = ?", (entry_id, user_id))
     deleted = cursor.rowcount
     try:
         await conn.commit()
@@ -149,79 +163,98 @@ async def delete_time_entry(entry_id):
     return {"deleted": deleted, "id": entry_id}
 
 
-async def set_schedule(day, hours):
+async def set_schedule(user_id: str, day: str, hours: float):
+    """Set weekly schedule for a user"""
+    await ensure_user(user_id)
+
     conn = await get_connection()
-    await conn.execute("""
-        INSERT OR REPLACE INTO work_schedule (weekday, expected_hours)
-        VALUES (?, ?)
-    """, (day, hours))
+    # Validate day
+    valid_days = ["Monday", "Tuesday", "Wednesday",
+                  "Thursday", "Friday", "Saturday", "Sunday"]
+    if day not in valid_days:
+        raise ValueError(f"Invalid day: {day}. Must be one of {valid_days}")
 
-    try:
-        await conn.commit()
-    except Exception as e:
-        if "readonly" in str(e).lower():
-            raise ValueError(
-                "Database is read-only. Please configure a writable database path using the DB_PATH environment variable for persistent storage.")
-        raise
+    if hours < 0:
+        raise ValueError("Hours must be non-negative")
+
+    await conn.execute(
+        "INSERT OR REPLACE INTO work_schedule (user_id, weekday, expected_hours) VALUES (?, ?, ?)",
+        (user_id, day, hours)
+    )
+    await conn.commit()
+    return {"user_id": user_id, "day": day, "hours": hours}
 
 
-async def get_schedule():
+async def get_schedule(user_id: str):
+    """Get work schedule for a user"""
+    await ensure_user(user_id)
+
     conn = await get_connection()
-    cursor = await conn.execute("SELECT weekday, expected_hours FROM work_schedule")
-    rows = await cursor.fetchall()
-    return [{"day": d, "hours": h} for d, h in rows]
-
-
-async def month_summary(month, year):
-    conn = await get_connection()
-    prefix = f"{year}-{month:02d}"
-
-    # Get all entries for the month
     cursor = await conn.execute(
-        "SELECT id, date, weekday, start_time, end_time, break_start_time, break_end_time, total_hours, remark FROM time_entries WHERE date LIKE ? ORDER BY date",
-        (f"{prefix}%",)
+        "SELECT weekday, expected_hours FROM work_schedule WHERE user_id = ? ORDER BY CASE weekday WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6 WHEN 'Sunday' THEN 7 END",
+        (user_id,)
+    )
+    rows = await cursor.fetchall()
+    return [{"day": row[0], "hours": row[1]} for row in rows]
+
+
+async def month_summary(user_id: str, month: int, year: int):
+    """Get monthly summary for a user with worked vs expected hours"""
+    await ensure_user(user_id)
+
+    conn = await get_connection()
+
+    # Get all entries for the month for this user
+    cursor = await conn.execute(
+        "SELECT date, weekday, total_hours FROM time_entries WHERE user_id = ? AND date LIKE ? ORDER BY date",
+        (user_id, f"{year}-{month:02d}%")
     )
     entries = await cursor.fetchall()
 
-    # Calculate totals
-    worked = sum(entry[7] for entry in entries) if entries else 0
+    # Get work schedule for this user
+    schedule = await get_schedule(user_id)
+    schedule_dict = {item["day"]: item["hours"] for item in schedule}
 
-    # Get work schedule - ONLY calculate expected hours for scheduled days
-    cursor = await conn.execute("SELECT weekday, expected_hours FROM work_schedule")
-    schedule_rows = await cursor.fetchall()
-    schedule = dict(schedule_rows)
+    # Calculate expected hours
+    from utils import count_weekday_in_month
+    expected_hours = 0
+    for day_name, day_hours in schedule_dict.items():
+        count = count_weekday_in_month(year, month, day_name)
+        expected_hours += count * day_hours
 
-    # Calculate expected hours based ONLY on scheduled days
-    # If no schedule is set, expected_hours = 0
-    expected = 0
-    for weekday, daily_hours in schedule.items():
-        day_count = count_weekday_in_month(year, month, weekday)
-        expected += day_count * daily_hours
+    # Calculate worked hours
+    worked_hours = sum(float(entry[2]) if entry[2] else 0 for entry in entries)
 
-    # Format detailed entries
-    detailed_entries = [
-        {
-            "id": entry[0],
-            "date": entry[1],
-            "day": entry[2],
-            "start_time": entry[3],
-            "end_time": entry[4],
-            "break_start_time": entry[5],
-            "break_end_time": entry[6],
-            "hours": round(entry[7], 2),
-            "remark": entry[8]
-        }
-        for entry in entries
-    ]
+    # Calculate overtime
+    overtime = worked_hours - expected_hours
+
+    # Count worked days
+    worked_days = len(entries)
+
+    # Count expected days in schedule
+    expected_days = 0
+    import calendar
+    for day in range(1, calendar.monthrange(year, month)[1] + 1):
+        date_str = f"{year}-{month:02d}-{day:02d}"
+        weekday = get_weekday(date_str)
+        if weekday in schedule_dict:
+            expected_days += 1
 
     return {
+        "user_id": user_id,
         "month": month,
         "year": year,
-        "entries": detailed_entries,
-        "summary": {
-            "total_worked_hours": round(worked, 2),
-            "expected_hours": round(expected, 2),
-            "overtime": round(worked - expected, 2),
-            "entry_count": len(entries)
-        }
+        "worked_hours": round(worked_hours, 2),
+        "expected_hours": round(expected_hours, 2),
+        "overtime": round(overtime, 2),
+        "worked_days": worked_days,
+        "expected_days": expected_days,
+        "entries": [
+            {
+                "date": entry[0],
+                "weekday": entry[1],
+                "hours": round(float(entry[2]), 2) if entry[2] else 0
+            }
+            for entry in entries
+        ]
     }

@@ -3,40 +3,54 @@
 [![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange.svg)](https://modelcontextprotocol.io/)
+[![Security](https://img.shields.io/badge/Security-User%20Isolated-brightgreen.svg)]()
 
-A comprehensive **Model Context Protocol (MCP)** server for professional work time tracking, designed to integrate seamlessly with AI assistants and automation tools. Track work hours, manage schedules, calculate overtime, and generate detailed Excel reports with enterprise-grade validation and error handling.
+A comprehensive **Model Context Protocol (MCP)** server for professional work time tracking, designed to integrate seamlessly with AI assistants and automation tools. Track work hours, manage schedules, calculate overtime, and generate detailed Excel reports with enterprise-grade validation, error handling, and **user data isolation**.
+
+## ⚠️ Security & Data Isolation
+
+**This version includes critical security enhancements:**
+
+- ✅ **User Data Isolation**: Every tool now requires a `user_id` parameter. Users can only access their own data.
+- ✅ **User Registration**: All users must be registered via `register_user_tool()` before using other features.
+- ✅ **Database Constraints**: Foreign key relationships and UNIQUE constraints enforce data integrity.
+- ✅ **SQL Injection Protection**: All queries use parameterized statements (no string concatenation).
+- ✅ **Timestamps**: All entries include `created_at` and `updated_at` timestamps for audit trails.
+
+> **Important**: The previous version had a critical flaw where any user could access all users' data due to missing user_id fields. This has been completely fixed.
 
 ## 🌟 Key Features
 
 ### 📊 Time Tracking
 
+- **User-Isolated Data**: Each user's data is completely isolated - users can only view/modify their own entries
 - **Precise Time Entry**: Record work hours with start/end times and optional break periods
 - **Smart Break Handling**: Equal break start/end times indicate "no break" for easy updates
 - **Flexible Scheduling**: Define a weekly schedule as the primary work blueprint
-- **Schedule-First Workflow**: Time entries require a defined schedule or fallback default weekly hours before logging
 - **Expected Hours from Schedule**: Expected monthly hours are calculated only from scheduled weekdays
 - **Monthly Summaries**: Comprehensive reports with worked hours, expected hours, and overtime
 
 ### 📈 Reporting & Export
 
-- **Excel Export**: Generate professional IKIM-style Excel timesheets
+- **User-Specific Excel Export**: Generate professional IKIM-style Excel timesheets (user data only)
 - **Data Integrity**: Automatic handling of missing days and data validation
 - **Entry IDs**: All entries include unique IDs for easy updates and deletions
 - **Customizable Reports**: Export specific months with detailed breakdowns
+- **Audit Trail**: Timestamps on all operations for compliance
 
 ### 🔧 Enterprise Features
 
 - **Robust Validation**: Comprehensive input validation with clear error messages
-- **Database Persistence**: SQLite-based storage with automatic schema management
-- **Configuration Management**: JSON-based user preferences and environment variable support
-- **Flexible Work Hours**: Configure weekly work hours and work days for accurate calculations
+- **Database Persistence**: SQLite-based storage with automatic schema management and foreign keys
+- **Data Isolation**: Per-user configuration with UNIQUE constraints preventing data leakage
+- **Flexible Work Hours**: Configure weekly work hours and work days per user for accurate calculations
 - **Asynchronous Operations**: Built with async/await for high-performance concurrent database operations using aiosqlite
 - **Thread Safety**: Optimized for MCP's single-threaded execution model
 
 ### 🤖 **MCP Integration**
 
 - **AI Assistant Ready**: Full MCP protocol compliance for seamless AI integration
-- **Tool-Based API**: 11 specialized tools for comprehensive time tracking operations
+- **Tool-Based API**: 12 specialized tools for comprehensive time tracking operations
 - **Type Safety**: Full type hints and structured data exchange
 - **Error Handling**: Graceful error handling with detailed error responses
 
@@ -45,19 +59,20 @@ A comprehensive **Model Context Protocol (MCP)** server for professional work ti
 ```
 WorkTime Entry MCP Server
 ├── main.py          # MCP server setup and tool definitions
-├── services.py      # Business logic and data operations
-├── db.py           # Database connection and schema management
+├── services.py      # Business logic and data operations with user isolation
+├── db.py           # Database connection and schema with user support
 ├── utils.py        # Utility functions and validation
-├── excel_export.py # Excel report generation
-├── config.py       # Configuration management
-└── config_user.json # User preferences storage
+├── excel_export.py # Excel report generation (user-specific)
+└── config.py       # Configuration management
 ```
 
 ### Database Schema
 
-- **`time_entries`**: Work time records with break tracking
-- **`work_schedule`**: Weekly schedule configuration
+- **`users`**: User registration and metadata
+- **`time_entries`**: Work time records with user_id isolation and timestamps
+- **`work_schedule`**: Per-user weekly schedule configuration
 - **Automatic Migrations**: Schema updates handled transparently
+- **Foreign Keys**: Enforced referential integrity with CASCADE delete
 
 ## 📋 Prerequisites
 
@@ -106,61 +121,11 @@ pip install -e .
 ### Environment Variables
 
 ```bash
-# Set default weekly hours (optional)
-export DEFAULT_WEEKLY_HOURS=9.0
-
 # Set database path for persistent storage (optional, defaults to /tmp/work_time.db)
 export DB_PATH=/path/to/your/database.db
 
 # Set config file path for user preferences (optional, defaults to project directory)
 export CONFIG_PATH=/path/to/config_user.json
-```
-
-### User Preferences
-
-The server automatically creates `config_user.json` for storing user preferences:
-
-```json
-{
-  "default_weekly_hours": 40.0,
-  "work_days_per_week": 5
-}
-```
-
-**Configuration Options:**
-
-- `default_weekly_hours`: Total work hours per week used as a fallback only when no work schedule is defined.
-- `work_days_per_week`: Number of work days per week (default: 5). Used to infer daily default hours when no schedule blueprint exists.
-
-The system calculates default daily hours as: `default_weekly_hours / work_days_per_week` when using fallback scheduling.
-
-When a work schedule is defined, the schedule total becomes authoritative and `get_default_weekly_hours()` returns the combined weekly scheduled hours.
-
-## 🎯 Usage
-
-### Starting the Server
-
-```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Start MCP server
-python main.py
-```
-
-### MCP Client Integration
-
-Configure your MCP client (e.g., Claude Desktop) to connect to this server:
-
-```json
-{
-  "mcpServers": {
-    "worktime": {
-      "command": "python",
-      "args": ["/path/to/worktime-entry-mcp-remote-server/main.py"]
-    }
-  }
-}
 ```
 
 ## ☁️ Cloud Deployment
@@ -187,16 +152,38 @@ This server is designed to work with FastMCP cloud deployments. For persistent d
 
 ## 📚 API Reference
 
-### Time Entry Management
+### User Management
 
-#### `add_time_entry(date, start, end, remark?, break_start?, break_end?)`
+#### `register_user_tool(user_id)`
 
-Add a new work time entry.
+Register a new user for time tracking.
 
-> Requires a defined work schedule via `set_work_schedule()` or fallback default weekly hours via `set_default_weekly_hours()` before logging entries.
+> **IMPORTANT**: All users must be registered before using other tools. Each MCP client/user should have a unique `user_id`.
 
 **Parameters:**
 
+- `user_id` (str): Unique identifier for the user (email, username, etc.)
+
+**Returns:** Registration confirmation
+
+**Example:**
+
+```python
+register_user_tool("alice@company.com")
+register_user_tool("bob@company.com")
+```
+
+### Time Entry Management
+
+#### `add_time_entry(user_id, date, start, end, remark?, break_start?, break_end?)`
+
+Add a new work time entry for a specific user.
+
+> Requires a defined work schedule via `set_work_schedule()` before logging entries.
+
+**Parameters:**
+
+- `user_id` (str): User identifier (must be registered)
 - `date` (str): Date in YYYY-MM-DD format
 - `start` (str): Start time in HH:MM format
 - `end` (str): End time in HH:MM format
@@ -210,93 +197,226 @@ Add a new work time entry.
 
 ```python
 # Add a regular work day
-add_time_entry("2024-01-15", "09:00", "17:00", "Project development")
+add_time_entry("alice@company.com", "2024-01-15", "09:00", "17:00", "Project development")
 
 # Add entry with break
-add_time_entry("2024-01-15", "09:00", "17:00", "Meetings", "12:00", "13:00")
+add_time_entry("alice@company.com", "2024-01-15", "09:00", "17:00", "Meetings", "12:00", "13:00")
 ```
 
-#### `get_time_entries(month, year)`
+**Data Isolation:** Alice can only access her own entries, not Bob's.
 
-Retrieve all time entries for a specific month.
+#### `get_time_entries(user_id, month, year)`
+
+Retrieve all time entries for a specific user and month.
 
 **Parameters:**
 
+- `user_id` (str): User identifier
 - `month` (int): Month number (1-12)
 - `year` (int): Year (e.g., 2024)
 
-**Returns:** List of time entries with full details
+**Returns:** List of user's time entries for that month
 
-#### `get_time_entry(entry_id)`
+**Data Isolation:** Only returns entries belonging to the specified `user_id`.
+
+#### `get_time_entry(user_id, entry_id)`
 
 Get a specific time entry by ID.
 
 **Parameters:**
 
+- `user_id` (str): User identifier
 - `entry_id` (int): Unique entry identifier
 
-**Returns:** Complete entry details or null if not found
+**Returns:** Complete entry details or error if not found or not owned by user
 
-#### `update_time_entry(entry_id, date?, start?, end?, remark?, break_start?, break_end?)`
+**Data Isolation:** Returns error if the entry doesn't belong to `user_id`.
+
+#### `update_time_entry(user_id, entry_id, date?, start?, end?, remark?, break_start?, break_end?)`
 
 Update an existing time entry.
 
 **Parameters:**
 
+- `user_id` (str): User identifier
 - `entry_id` (int): Entry to update
 - Other parameters: Same as add_time_entry, all optional
 
 **Returns:** Updated entry details
 
-#### `delete_time_entry(entry_id)`
+**Data Isolation:** Can only update entries owned by `user_id`.
+
+#### `delete_time_entry(user_id, entry_id)`
 
 Remove a time entry.
 
 **Parameters:**
 
+- `user_id` (str): User identifier
 - `entry_id` (int): Entry to delete
 
-**Returns:** Deletion confirmation with affected row count
+**Returns:** Deletion confirmation
+
+**Data Isolation:** Can only delete own entries.
 
 ### Schedule Management
 
-#### `set_work_schedule(day, hours)`
+#### `set_work_schedule(user_id, day, hours)`
 
-Set expected working hours for a specific weekday.
+Set expected working hours for a specific weekday for a user.
 
 **Parameters:**
 
-- `day` (str): Day name (Monday, Tuesday, etc.)
+- `user_id` (str): User identifier
+- `day` (str): Day name (Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday)
 - `hours` (float): Expected hours for that day
 
 **Example:**
 
 ```python
-set_work_schedule("Monday", 8.0)
-set_work_schedule("Friday", 6.0)
+set_work_schedule("alice@company.com", "Monday", 8.0)
+set_work_schedule("alice@company.com", "Friday", 6.0)
 ```
 
-#### `get_work_schedule()`
+**Data Isolation:** Each user has their own schedule.
 
-Retrieve the current work schedule.
+#### `get_work_schedule(user_id)`
 
-**Returns:** List of day-hours pairs
-
-### Configuration
-
-#### `set_default_weekly_hours(hours)`
-
-Set the default weekly hours for new schedule entries.
+Retrieve the work schedule for a specific user.
 
 **Parameters:**
 
-- `hours` (float): Default hours value
+- `user_id` (str): User identifier
 
-#### `get_default_weekly_hours()`
+**Returns:** List of day-hours pairs for that user
 
-Get the current default weekly hours setting.
+**Data Isolation:** Only returns the user's schedule.
 
-**Returns:** Current default hours value
+### Reporting & Export
+
+#### `get_month_summary(user_id, month, year)`
+
+Get a comprehensive monthly summary with worked vs expected hours.
+
+**Parameters:**
+
+- `user_id` (str): User identifier
+- `month` (int): Month number (1-12)
+- `year` (int): Year
+
+**Returns:** Summary with:
+
+- `worked_hours`: Total hours logged
+- `expected_hours`: Total hours from schedule
+- `overtime`: Positive if over expected, negative if under
+- `worked_days`: Number of days with entries
+- `expected_days`: Number of days in schedule for the month
+- `entries`: Detailed list of entries
+
+**Example Response:**
+
+```json
+{
+  "user_id": "alice@company.com",
+  "month": 1,
+  "year": 2024,
+  "worked_hours": 165.5,
+  "expected_hours": 160.0,
+  "overtime": 5.5,
+  "worked_days": 22,
+  "expected_days": 22,
+  "entries": [...]
+}
+```
+
+**Data Isolation:** Only returns the user's data.
+
+#### `export_month_excel(user_id, month, year)`
+
+Export a user's timesheet to professional IKIM-style Excel.
+
+**Parameters:**
+
+- `user_id` (str): User identifier
+- `month` (int): Month number
+- `year` (int): Year
+
+**Returns:** File path with user data extracted to Excel
+
+**Example:**
+
+```python
+export_month_excel("alice@company.com", 1, 2024)
+# Generates: /tmp/timesheet_alice@company.com_2024-01.xlsx
+```
+
+**Data Isolation:** Excel file contains only the specified user's data.
+
+## 🔐 Security Best Practices
+
+1. **User Identification**: Ensure your MCP client/AI system correctly identifies the current user and passes the `user_id` consistently.
+
+2. **Unique User IDs**: Use globally unique identifiers (emails, UUIDs) for `user_id` to prevent collisions.
+
+3. **Database Backup**: Implement regular database backups outside of temporary storage directories.
+
+4. **Access Control**: If deploying as a service, implement authentication to ensure only authorized clients can connect.
+
+5. **Audit Logs**: Enable timestamp tracking (built-in) to monitor who modified which entries and when.
+
+## 📝 Migration Guide (from v1.0)
+
+If you're upgrading from the previous version without user isolation:
+
+### Database Migration
+
+The system automatically handles schema migration:
+
+1. A `users` table is created
+2. `user_id` columns are added to existing tables
+3. Existing data is assigned to a `default_user`
+
+### Code Changes
+
+All function calls now require `user_id` as the first parameter:
+
+**Before (❌ insecure):**
+
+```python
+add_time_entry("2024-01-15", "09:00", "17:00")
+get_time_entries(1, 2024)
+```
+
+**After (✅ secure):**
+
+```python
+add_time_entry("alice@company.com", "2024-01-15", "09:00", "17:00")
+get_time_entries("alice@company.com", 1, 2024)
+```
+
+First, register all users:
+
+```python
+register_user_tool("alice@company.com")
+register_user_tool("bob@company.com")
+```
+
+## 🐛 Fixes in This Version
+
+- ✅ **Critical**: Added user_id to all database operations for data isolation
+- ✅ **Critical**: Removed cross-user data access vulnerability
+- ✅ **Critical**: Updated all tools to require user_id parameter
+- ✅ **Enhancement**: Added user management and registration
+- ✅ **Enhancement**: Added audit timestamps to all entries
+- ✅ **Enhancement**: Implemented database foreign keys and constraints
+- ✅ **Bug Fix**: Implemented missing `month_summary()` function
+- ✅ **Bug Fix**: Added missing `asyncio` import
+- ✅ **Enhancement**: Improved Excel export with user information
+- ✅ **Enhancement**: Added per-user schedule isolation
+
+## 📞 Support
+
+For issues, questions, or security concerns, please report them appropriately.
 
 #### `set_work_days_per_week(days)`
 
